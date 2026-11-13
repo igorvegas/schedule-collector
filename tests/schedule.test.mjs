@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { extractAssigned, parseUpdate, validateFact } from '../scripts/lib/schedule.mjs';
+import {
+  SCHEMA_VERSION,
+  extractAssigned,
+  failureStatus,
+  okStatus,
+  parseUpdate,
+  sameFailure,
+  validateFact,
+} from '../scripts/lib/schedule.mjs';
 
 const seed = JSON.parse(fs.readFileSync(new URL('../data/state.json', import.meta.url)));
 const html = `<html><script>var DisconSchedule = {};
@@ -39,4 +47,26 @@ test('validateFact отклоняет мусор', () => {
 test('parseUpdate', () => {
   assert.ok(parseUpdate('13.11.2026 21:44') > parseUpdate('13.11.2026 18:39'));
   assert.equal(parseUpdate('мусор'), null);
+});
+
+test('failureStatus: ok=false, сообщение обрезается до одной строки', () => {
+  const s = failureStatus('первая строка\nвторая', '2026-01-01T00:00:00.000Z');
+  assert.equal(s.ok, false);
+  assert.equal(s.message, 'первая строка');
+  assert.equal(s.at, '2026-01-01T00:00:00.000Z');
+  assert.equal(failureStatus('x'.repeat(500)).message.length, 200);
+});
+
+test('sameFailure: повтор той же ошибки не считается новым', () => {
+  const a = failureStatus('нет fact.update', 't1');
+  const b = failureStatus('нет fact.update', 't2');
+  assert.equal(sameFailure(a, b), true);
+  assert.equal(sameFailure(a, failureStatus('другая', 't3')), false);
+  assert.equal(sameFailure(okStatus('t0'), b), false);
+  assert.equal(sameFailure(null, b), false);
+});
+
+test('okStatus и версия схемы', () => {
+  assert.equal(okStatus().ok, true);
+  assert.match(SCHEMA_VERSION, /^\d+\.\d+\.\d+$/);
 });

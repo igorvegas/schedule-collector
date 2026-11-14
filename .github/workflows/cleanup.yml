@@ -1,0 +1,26 @@
+name: Cleanup runs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Delete old runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_DAYS: '1'
+        run: |
+          cutoff=$(date -u -d "-${KEEP_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)
+          gh api --paginate -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" \
+            -f per_page=100 -f status=completed -f created="<${cutoff}" \
+            --jq '.workflow_runs[].id' \
+          | xargs -r -P4 -I{} gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/{}" || true

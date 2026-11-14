@@ -16,7 +16,9 @@ if (!/^https?:\/\//i.test(SOURCE_URL)) {
   console.error('::error::Не задан секрет SOURCE_URL');
   process.exit(1);
 }
-const CHANNEL = process.env.BROWSER_CHANNEL ?? 'chrome';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+const MIN_HTML_BYTES = Number(process.env.MIN_HTML_BYTES || 1500);
 const MAX_RETRY = Number(process.env.MAX_RETRY || 4);
 const OUT = process.env.OUT_FILE || path.join('data', 'state.json');
 
@@ -26,24 +28,20 @@ const redact = (v) => String(v).split(SOURCE_URL).join('***').split(HOST).join('
 const log = (...a) => console.log('[collect]', ...a.map(redact));
 
 async function launch() {
-  const opts = { headless: true, args: ['--disable-blink-features=AutomationControlled'] };
-  if (CHANNEL) {
-    try {
-      return await chromium.launch({ ...opts, channel: CHANNEL });
-    } catch (e) {
-      log(`канал '${CHANNEL}' недоступен (${e.message.split('\n')[0]}), пробую bundled Chromium`);
-    }
-  }
-  return chromium.launch(opts);
+  return chromium.launch({
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled'],
+  });
 }
 
 async function fetchOnce(context) {
   const page = await context.newPage();
   try {
-    await page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
     await page
       .waitForFunction(() => window.DisconSchedule && window.DisconSchedule.fact, null, {
-        timeout: 45_000,
+        timeout: 15_000,
       })
       .catch(() => {});
     let fact = null;
@@ -56,7 +54,11 @@ async function fetchOnce(context) {
     if (!fact) {
       const html = await page.content();
       fact = extractAssigned(html, 'fact');
-      if (!fact) log(`страница без данных, ${html.length} байт`);
+      if (!fact) {
+        const markers = html.includes('DisconSchedule.fact') ? 'маркер есть' : 'маркера нет';
+        const small = html.length < MIN_HTML_BYTES ? ', слишком короткий ответ' : '';
+        log(`страница без данных, ${html.length} байт, ${markers}${small}`);
+      }
     }
     return { fact };
   } finally {
@@ -79,6 +81,7 @@ let lastReason = 'нет данных';
 try {
   browser = await launch();
   context = await browser.newContext({
+    userAgent: USER_AGENT,
     locale: 'uk-UA',
     timezoneId: 'Europe/Kyiv',
     viewport: { width: 1366, height: 900 },
@@ -115,7 +118,7 @@ const existing = await readExisting();
 
 if (!result) {
   const message = redact(lastReason);
-  console.error(`::error::Не удалось получить график после ${MAX_RETRY} попыток: ${message}`);
+  console.warn(`::warning::Не удалось получить график после ${MAX_RETRY} попыток: ${message}`);
   if (existing?.fact) {
     const status = failureStatus(message);
     if (!sameFailure(existing.lastUpdateStatus, status)) {
@@ -123,7 +126,7 @@ if (!result) {
       log('записан статус ошибки');
     }
   }
-  process.exit(1);
+  process.exit(0);
 }
 
 const { fact } = result;

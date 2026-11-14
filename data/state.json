@@ -635,11 +635,11 @@
     "today": 1794607200
   },
   "lastUpdateStatus": {
-    "status": "failed",
-    "ok": false,
-    "code": null,
-    "message": "fact отсутствует",
-    "at": "2026-11-14T21:25:58.778Z"
+    "status": "parsed",
+    "ok": true,
+    "code": 200,
+    "message": null,
+    "at": "2026-11-14T21:27:53.811Z"
   },
   "meta": {
     "schemaVersion": "1.0.0"

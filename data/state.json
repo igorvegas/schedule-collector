@@ -321,11 +321,11 @@
     "today": 1794780000
   },
   "lastUpdateStatus": {
-    "status": "failed",
-    "ok": false,
-    "code": null,
-    "message": "page.goto: Timeout 45000ms exceeded.",
-    "at": "2026-11-16T18:39:52.779Z"
+    "status": "parsed",
+    "ok": true,
+    "code": 200,
+    "message": null,
+    "at": "2026-11-16T18:45:05.482Z"
   },
   "meta": {
     "schemaVersion": "1.0.0"

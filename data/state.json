@@ -321,11 +321,11 @@
     "today": 1795384800
   },
   "lastUpdateStatus": {
-    "status": "parsed",
-    "ok": true,
-    "code": 200,
-    "message": null,
-    "at": "2026-11-23T14:05:35.158Z"
+    "status": "failed",
+    "ok": false,
+    "code": null,
+    "message": "fact отсутствует",
+    "at": "2026-11-23T15:39:10.789Z"
   },
   "meta": {
     "schemaVersion": "1.0.0"

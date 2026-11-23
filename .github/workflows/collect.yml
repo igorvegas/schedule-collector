@@ -46,6 +46,7 @@ jobs:
 
       - name: Commit
         if: always()
+        shell: bash
         run: |
           git add data/*.json
           if git diff --cached --quiet; then
@@ -56,8 +57,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "data: update schedule"
           for i in 1 2 3; do
-            git push origin HEAD:"${GITHUB_REF_NAME}" && exit 0
-            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            if git push origin HEAD:"${GITHUB_REF_NAME}"; then
+              exit 0
+            fi
+            if ! git pull --rebase -X theirs origin "${GITHUB_REF_NAME}"; then
+              git rebase --abort || true
+            fi
             sleep $((i * 2))
           done
           echo "::error::не удалось запушить"

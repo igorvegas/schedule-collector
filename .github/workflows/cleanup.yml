@@ -24,19 +24,45 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           KEEP_DAYS: '1'
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cutoff=$(date -u -d "-${KEEP_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)
-          ids=$(gh api --paginate -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" \
-            -f per_page=100 -f status=completed -f created="<${cutoff}" \
-            --jq '.workflow_runs[].id')
+
+          # Без фильтров status/created: с ними GitHub отдаёт максимум 1000 записей,
+          # а зависшие (queued/in_progress/waiting) run'ы под status=completed не попадают вовсе.
+          # Фильтруем по дате на клиенте. Свой текущий run не трогаем.
+          runs=$(gh api --paginate -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" \
+            -f per_page=100 \
+            --jq ".workflow_runs[] | select(.created_at < \"${cutoff}\" and .id != ${GITHUB_RUN_ID}) | \"\(.id) \(.status)\"")
+
           total=0
           failed=0
-          for id in $ids; do
+          while read -r id status; do
+            [ -z "${id:-}" ] && continue
             total=$((total + 1))
-            if ! gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${id}" --silent 2>/dev/null; then
-              sleep 2
-              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${id}" --silent 2>/dev/null || failed=$((failed + 1))
+
+            # Зависший run сначала принудительно отменяем, иначе API не даст его удалить (409)
+            if [ "$status" != "completed" ]; then
+              echo "run ${id} в статусе ${status} — отменяю"
+              gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/force-cancel" --silent 2>&1 || true
+              sleep 3
             fi
-          done
+
+            ok=0
+            for attempt in 1 2 3; do
+              if out=$(gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${id}" --silent 2>&1); then
+                ok=1; break
+              fi
+              # 404 = уже удалён, считаем успехом
+              if echo "$out" | grep -q 'HTTP 404'; then ok=1; break; fi
+              sleep $((attempt * 5))
+            done
+
+            if [ "$ok" -ne 1 ]; then
+              failed=$((failed + 1))
+              echo "::warning::не удалось удалить run ${id} (${status}): ${out}"
+            fi
+            sleep 0.3   # не упираться во вторичный rate limit
+          done <<< "$runs"
+
           echo "найдено: ${total}, не удалось удалить: ${failed}"
           [ "$failed" -eq 0 ]
